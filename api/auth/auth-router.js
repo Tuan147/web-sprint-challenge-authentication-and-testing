@@ -1,6 +1,12 @@
 const router = require('express').Router();
+const bcrypt = require('bcryptjs');
+const {JWT_SECRET, BYCRYPT_ROUNDS} = require('../../secrets')
+const Jokes = require('../jokes/jokes-model');
+const jwt = require('jsonwebtoken');
+const { restricted } = require('../middleware/restricted');
+const {checkUsernameExists} = require('./auth-middleware')
 
-router.post('/register', (req, res) => {
+router.post('/register', (req, res, next) => {
   res.end('implement register, please!');
   /*
     IMPLEMENT
@@ -27,9 +33,18 @@ router.post('/register', (req, res) => {
     4- On FAILED registration due to the `username` being taken,
       the response body should include a string exactly as follows: "username taken".
   */
+    let user = req.body
+    const hash = bcrypt.hashSync(user.password, BYCRYPT_ROUNDS)
+    user.password = hash
+
+    Jokes.add(user)
+      .then(saved => {
+        res.status(201).json(saved)
+      })
+      .catch(next)
 });
 
-router.post('/login', (req, res) => {
+router.post('/login', checkUsernameExists, (req, res) => {
   res.end('implement login, please!');
   /*
     IMPLEMENT
@@ -54,6 +69,24 @@ router.post('/login', (req, res) => {
     4- On FAILED login due to `username` not existing in the db, or `password` being incorrect,
       the response body should include a string exactly as follows: "invalid credentials".
   */
+  if (bcrypt.compareSync(req.body.password, req.user.password)) {
+    const token = generateToken(req.user)
+    res.json({
+      status: 200,
+      message: `welcome, ${req.user.username}`,
+      token
+    })
+  } else {
+    next({status: 401, message: "invalid credentials"})
+  }
 });
+
+function generateToken(user) {
+  const payload = {
+    subject: user.user_id,
+    username: user.username
+  }
+  return jwt.sign(payload, JWT_SECRET, {expiresIn: '1d'})
+}
 
 module.exports = router;
